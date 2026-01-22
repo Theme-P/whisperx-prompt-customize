@@ -1,0 +1,29 @@
+# Audio files
+audio/*.mp3
+audio/*.MP3
+audio/*.m4a
+audio/*.wav
+audio/*.flac
+audio/*.ogg
+
+# Keep the audio folder
+!audio/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.so
+
+# Environment
+.env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+*.log
