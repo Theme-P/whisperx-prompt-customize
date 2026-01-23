@@ -6,14 +6,14 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# OpenAI API configuration
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+# NTC AI Gateway API configuration
+NTC_API_KEY = os.getenv("NTC_API_KEY")
+NTC_API_URL = os.getenv("NTC_API_URL", "https://aigateway.ntictsolution.com/v1/chat/completions")
 
 
 def summarize_transcription(transcription_text: str, language: str = "Thai") -> str:
     """
-    Summarize transcription text from WhisperX using GPT-4o.
+    Summarize transcription text from WhisperX using GPT-4o via NTC AI Gateway.
     
     Args:
         transcription_text: The transcription text to summarize
@@ -22,11 +22,11 @@ def summarize_transcription(transcription_text: str, language: str = "Thai") -> 
     Returns:
         Summarized text
     """
-    if not OPENAI_API_KEY:
-        return "Error: OPENAI_API_KEY not found in environment variables"
+    if not NTC_API_KEY:
+        return "Error: NTC_API_KEY not found in environment variables"
     
     headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Authorization": f"Bearer {NTC_API_KEY}",
         "Content-Type": "application/json"
     }
     
@@ -53,14 +53,14 @@ def summarize_transcription(transcription_text: str, language: str = "Thai") -> 
     }
     
     try:
-        response = requests.post(OPENAI_API_URL, headers=headers, json=payload, timeout=60)
+        response = requests.post(NTC_API_URL, headers=headers, json=payload, timeout=60)
         response.raise_for_status()
         
         result = response.json()
         return result["choices"][0]["message"]["content"]
         
     except requests.exceptions.RequestException as e:
-        return f"Error calling OpenAI API: {str(e)}"
+        return f"Error calling NTC API: {str(e)}"
     except (KeyError, IndexError) as e:
         return f"Error parsing response: {str(e)}"
 
@@ -92,6 +92,6 @@ if __name__ == "__main__":
     สามารถนำมาสรุปใจความสำคัญได้
     """
     
-    print("Testing GPT-4o Summarization...")
+    print("Testing GPT-4o Summarization via NTC AI Gateway...")
     summary = summarize_transcription(sample_text)
     print(f"\nSummary:\n{summary}")
