@@ -25,7 +25,7 @@ def _patched_torch_load(*args, **kwargs):
 torch.load = _patched_torch_load
 
 import whisperx
-from SummaryModel import summarize_with_diarization
+from SummaryModel import summarize_with_diarization, get_meeting_types_menu, MEETING_TYPES
 
 
 # ===================== CONFIGURATION =====================
@@ -130,9 +130,13 @@ class TranscribeSummaryPipeline:
         self.timing['model_load'] = time.time() - start
         print(f"   ⏱️ Model loaded: {self.timing['model_load']:.2f}s")
     
-    def process(self, audio_file: str) -> Dict[str, Any]:
+    def process(self, audio_file: str, meeting_type_id: int = 0) -> Dict[str, Any]:
         """
         Process audio file: transcribe and summarize.
+        
+        Args:
+            audio_file: Path to audio file
+            meeting_type_id: Meeting type ID (0=auto-detect, 1-11=specific type)
         
         Returns structured output with:
         - Full transcript with segments
@@ -225,9 +229,14 @@ class TranscribeSummaryPipeline:
         }
         
         # Step 3: Run summary with diarization data
-        print("🤖 Running AI Summary with speaker analysis...")
+        meeting_info = MEETING_TYPES.get(meeting_type_id, MEETING_TYPES[0])
+        print(f"🤖 Running AI Summary ({meeting_info['thai']})...")
         summary_start = time.time()
-        summary_text = summarize_with_diarization(transcript_with_speakers, speaker_summary)
+        summary_text = summarize_with_diarization(
+            transcript_with_speakers, 
+            speaker_summary,
+            meeting_type_id=meeting_type_id
+        )
         summary_time = time.time() - summary_start
         print(f"   ⏱️ Summary API: {summary_time:.2f}s")
         
@@ -331,9 +340,28 @@ if __name__ == "__main__":
         print(f"❌ Error: File not found: {audio_file}")
         exit(1)
     
+    # Show meeting type menu and get selection
+    print()
+    print(get_meeting_types_menu())
+    
+    while True:
+        try:
+            meeting_choice = input("🔢 เลือกประเภทการประชุม (0-11): ").strip()
+            meeting_type_id = int(meeting_choice)
+            if 0 <= meeting_type_id <= 11:
+                break
+            print("❌ กรุณาเลือก 0-11")
+        except ValueError:
+            print("❌ กรุณาใส่ตัวเลข 0-11")
+    
+    selected_type = MEETING_TYPES[meeting_type_id]
+    print(f"\n✅ เลือก: {selected_type['thai']} ({selected_type['name']})")
+    print(f"   โครงสร้าง: {selected_type['structure']}")
+    print()
+    
     # Run pipeline
     pipeline = TranscribeSummaryPipeline()
-    output = pipeline.process(audio_file)
+    output = pipeline.process(audio_file, meeting_type_id=meeting_type_id)
     pipeline.print_results(output)
     
     # Export to DOCX files (both transcript and summary)
@@ -354,4 +382,3 @@ if __name__ == "__main__":
         print(f"   - Summary: {results['summary']}")
     except Exception as e:
         print(f"\n⚠️ Could not export DOCX: {e}")
-

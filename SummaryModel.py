@@ -10,6 +10,59 @@ load_dotenv()
 NTC_API_KEY = os.getenv("NTC_API_KEY")
 NTC_API_URL = os.getenv("NTC_API_URL", "https://aigateway.ntictsolution.com/v1/chat/completions")
 
+# ===================== MEETING TYPES =====================
+MEETING_TYPES = {
+    0: {"name": "Auto-Detect", "thai": "ตรวจจับอัตโนมัติ", "structure": "วิเคราะห์จากเนื้อหา"},
+    1: {"name": "Shareholder Meeting", "thai": "ประชุมผู้ถือหุ้น", "structure": "วาระ → มติ → เงินปันผล → ข้อสรุป"},
+    2: {"name": "Board Meeting", "thai": "ประชุมคณะกรรมการ", "structure": "นโยบาย → การอนุมัติ → มติคณะกรรมการ"},
+    3: {"name": "Planning Meeting", "thai": "ประชุมวางแผน", "structure": "เป้าหมาย → แผนงาน → ไทม์ไลน์ → ผู้รับผิดชอบ → ความเสี่ยง"},
+    4: {"name": "Progress Update", "thai": "รายงานความคืบหน้า", "structure": "สถานะโครงการ → ความคืบหน้า → ปัญหา → แนวทางแก้ → งานถัดไป"},
+    5: {"name": "Strategy Meeting", "thai": "ประชุมเชิงกลยุทธ์", "structure": "ทิศทางธุรกิจ → การวิเคราะห์ → กลยุทธ์ → Action Plan"},
+    6: {"name": "Incident Review", "thai": "ประชุมแก้ไขปัญหา", "structure": "รายละเอียดปัญหา → สาเหตุ → ผลกระทบ → แนวทางแก้ไข → การป้องกัน"},
+    7: {"name": "Client Meeting", "thai": "ประชุมลูกค้า", "structure": "ข้อเสนอ → Feedback → ข้อตกลง → Next Steps"},
+    8: {"name": "Workshop", "thai": "เชิงปฏิบัติการ", "structure": "หัวข้อ → เนื้อหาสำคัญ → บทเรียน → Action Items"},
+    9: {"name": "Executive Meeting", "thai": "ประชุมผู้บริหาร", "structure": "ประเด็นสำคัญ → การตัดสินใจ → มติ → ผู้รับผิดชอบ"},
+    10: {"name": "Team Meeting", "thai": "ประชุมทีมงาน", "structure": "อัพเดตงาน → การมอบหมาย → ปัญหา → สิ่งที่ต้องทำ"},
+    11: {"name": "General Meeting", "thai": "ประชุมทั่วไป", "structure": "วาระ → ประเด็นหารือ → ข้อเสนอแนะ → มติ"},
+}
+
+
+def get_meeting_types_menu() -> str:
+    """Return formatted menu of meeting types for user selection"""
+    lines = ["=" * 50, "📋 เลือกประเภทการประชุม:", "=" * 50]
+    for num, info in MEETING_TYPES.items():
+        lines.append(f"  [{num:2d}] {info['thai']} ({info['name']})")
+    lines.append("=" * 50)
+    return "\n".join(lines)
+
+
+def get_meeting_type_prompt(meeting_type_id: int) -> str:
+    """Get the prompt instruction for a specific meeting type"""
+    if meeting_type_id == 0:
+        # Auto-detect: include all types
+        types_table = "\n".join([
+            f"| {info['name']} | {info['structure']} |"
+            for num, info in MEETING_TYPES.items() if num > 0
+        ])
+        return f"""**ขั้นตอน:**
+1. วิเคราะห์ข้อมูลผู้พูดเพื่อระบุบทบาท (ประธาน/ผู้นำเสนอ/ผู้เข้าร่วม)
+2. วิเคราะห์เนื้อหาเพื่อระบุประเภทการประชุม
+3. สรุปตามโครงสร้างที่เหมาะสม
+
+**ประเภทการประชุม:**
+| ประเภท | โครงสร้าง |
+|--------|----------|
+{types_table}"""
+    else:
+        # Specific type selected
+        info = MEETING_TYPES.get(meeting_type_id, MEETING_TYPES[11])
+        return f"""**ประเภทการประชุม:** {info['thai']} ({info['name']})
+**โครงสร้างการสรุป:** {info['structure']}
+
+สรุปเนื้อหาตามโครงสร้างข้างต้นอย่างละเอียด"""
+
+
+
 
 def summarize_transcription(transcription_text: str, language: str = "Thai") -> str:
     """
@@ -104,6 +157,7 @@ def summarize_from_whisperx_result(result: dict) -> str:
 def summarize_with_diarization(
     transcript_with_speakers: str,
     speaker_summary: dict,
+    meeting_type_id: int = 0,
     language: str = "Thai"
 ) -> str:
     """
@@ -112,6 +166,7 @@ def summarize_with_diarization(
     Args:
         transcript_with_speakers: Full transcript with speaker labels
         speaker_summary: Dict with 'speaking_time' and 'word_count' per speaker
+        meeting_type_id: Meeting type ID (0=auto-detect, 1-11=specific type)
         language: Output language (default: Thai)
     
     Returns:
@@ -136,6 +191,10 @@ def summarize_with_diarization(
     speaker_info = "\n".join(speaker_info_lines)
     num_speakers = len(speakers_time)
     
+    # Get meeting type instruction
+    meeting_type_instruction = get_meeting_type_prompt(meeting_type_id)
+    meeting_type_info = MEETING_TYPES.get(meeting_type_id, MEETING_TYPES[0])
+    
     headers = {
         "Authorization": f"Bearer {NTC_API_KEY}",
         "Content-Type": "application/json"
@@ -148,35 +207,16 @@ def summarize_with_diarization(
                 "role": "system",
                 "content": f"""คุณคือผู้เชี่ยวชาญวิเคราะห์และสรุปการประชุม
 
-**ขั้นตอน:**
-1. วิเคราะห์ข้อมูลผู้พูดเพื่อระบุบทบาท (ประธาน/ผู้นำเสนอ/ผู้เข้าร่วม)
-2. วิเคราะห์เนื้อหาเพื่อระบุประเภทการประชุม
-3. สรุปตามโครงสร้างที่เหมาะสม
-4. **ระบุการสั่งงาน/คำถาม/ข้อตกลง พร้อมชื่อผู้พูดเสมอ**
-
-**ประเภทการประชุม:**
-| ประเภท | โครงสร้าง |
-|--------|----------|
-| Shareholder Meeting | วาระ → มติ → เงินปันผล |
-| Board Meeting | นโยบาย → การอนุมัติ → มติ |
-| Planning Meeting | เป้าหมาย → แผนงาน → ไทม์ไลน์ → ผู้รับผิดชอบ |
-| Progress Update | สถานะ → ความคืบหน้า → ปัญหา → แนวทางแก้ → งานถัดไป |
-| Strategy Meeting | ทิศทาง → กลยุทธ์ → Action Plan |
-| Incident Review | ปัญหา → สาเหตุ → แนวทางแก้ → การป้องกัน |
-| Client Meeting | ข้อเสนอ → Feedback → ข้อตกลง → Next Steps |
-| Workshop | หัวข้อ → เนื้อหา → บทเรียน → Action Items |
-| Executive Meeting | การตัดสินใจ → มติ → ผู้รับผิดชอบ |
-| Team Meeting | อัพเดต → มอบหมาย → ปัญหา → สิ่งที่ต้องทำ |
-| General Meeting | วาระ → หารือ → ข้อเสนอแนะ → มติ |
+{meeting_type_instruction}
 
 **Output Format:**
-**[ประเภท]: [หัวข้อ]**
+**[{meeting_type_info['thai'] if meeting_type_id > 0 else 'ประเภท'}]: [หัวข้อการประชุม]**
 
 **👥 ผู้เข้าร่วมประชุม ({num_speakers} คน):**
-(วิเคราะห์บทบาทจากเนื้อหาการพูด)
+(วิเคราะห์บทบาทจากเนื้อหาการพูด: ประธาน/ผู้นำเสนอ/ผู้เข้าร่วม)
 
 **📋 สรุปการประชุม:**
-(ตามโครงสร้างของประเภทนั้น)
+(ตามโครงสร้าง: {meeting_type_info['structure']})
 
 **📌 การสั่งงาน/มอบหมาย:** (ถ้ามี)
 - **[ผู้สั่ง]** สั่งให้ **[ผู้รับมอบหมาย]** ทำ: [เนื้อหา] (กำหนด: [วันที่/เวลา ถ้ามี])
