@@ -31,13 +31,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create cache directories
-RUN mkdir -p /app/.cache/huggingface /app/.cache/torch /app/audio
+RUN mkdir -p /app/.cache/huggingface /app/.cache/torch /app/audio /app/Doc
 
-# Copy scripts
-COPY Whisper_Test.py .
-COPY SummaryModel.py .
-COPY ExportUtils.py .
-COPY TM.py .
+# Copy application files (new OOP structure)
+COPY app/ /app/app/
+COPY main.py .
+COPY .env.example .env
 
 # Default to bash for flexibility (can run any script)
-CMD ["bash"]
+CMD ["python", "main.py"]

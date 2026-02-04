@@ -1,0 +1,190 @@
+import requests
+import json 
+import os
+from ..models.meeting import MEETING_TYPES
+
+# NTC AI Gateway API configuration
+# Note: In a real OOP app, this might be injected from a config
+NTC_API_KEY = os.getenv("NTC_API_KEY")
+NTC_API_URL = os.getenv("NTC_API_URL", "https://aigateway.ntictsolution.com/v1/chat/completions")
+
+def get_meeting_type_prompt(meeting_type_id: int) -> str:
+    """Get the prompt instruction for a specific meeting type"""
+    if meeting_type_id == 0:
+        # Auto-detect: include all types
+        types_table = "\n".join([
+            f"| {info['name']} | {info['structure']} |"
+            for num, info in MEETING_TYPES.items() if num > 0
+        ])
+        return f"""**ขั้นตอน:**
+1. วิเคราะห์ข้อมูลผู้พูดเพื่อระบุบทบาท (ประธาน/ผู้นำเสนอ/ผู้เข้าร่วม)
+2. วิเคราะห์เนื้อหาเพื่อระบุประเภทการประชุม
+3. สรุปตามโครงสร้างที่เหมาะสม
+
+**ประเภทการประชุม:**
+| ประเภท | โครงสร้าง |
+|--------|----------|
+{types_table}"""
+    else:
+        # Specific type selected
+        info = MEETING_TYPES.get(meeting_type_id, MEETING_TYPES[11])
+        return f"""**ประเภทการประชุม:** {info['thai']} ({info['name']})
+**โครงสร้างการสรุป:** {info['structure']}
+
+สรุปเนื้อหาตามโครงสร้างข้างต้นอย่างละเอียด"""
+
+def summarize_transcription(transcription_text: str, language: str = "Thai") -> str:
+    """Summarize transcription text from WhisperX using GPT-4o."""
+    if not NTC_API_KEY:
+        return "Error: NTC_API_KEY not found in environment variables"
+    
+    headers = {
+        "Authorization": f"Bearer {NTC_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": "gpt-4o",
+        "messages": [
+            {
+                "role": "system",
+                "content": f"""คุณคือผู้เชี่ยวชาญสรุปการประชุม ทำตามขั้นตอน:
+1. วิเคราะห์ประเภทการประชุม
+2. สรุปตามโครงสร้างที่เหมาะสม
+
+**ประเภทการประชุม:**
+| ประเภท | โครงสร้างหลัก |
+|--------|--------------|
+| Shareholder Meeting | วาระ → มติ → เงินปันผล → ข้อสรุป |
+| Board Meeting | นโยบาย → การอนุมัติ → มติคณะกรรมการ |
+| Planning Meeting | เป้าหมาย → แผนงาน → ไทม์ไลน์ → ผู้รับผิดชอบ → ความเสี่ยง |
+| Progress Update | สถานะโครงการ → ความคืบหน้า → ปัญหา → แนวทางแก้ → งานถัดไป |
+| Strategy Meeting | ทิศทางธุรกิจ → การวิเคราะห์ → กลยุทธ์ → Action Plan |
+| Incident Review | รายละเอียดปัญหา → สาเหตุ → ผลกระทบ → แนวทางแก้ไข → การป้องกัน |
+| Client Meeting | ข้อเสนอ → Feedback → ข้อตกลง → Next Steps |
+| Workshop | หัวข้อ → เนื้อหาสำคัญ → บทเรียน → Action Items |
+| Executive Meeting | ประเด็นสำคัญ → การตัดสินใจ → มติ → ผู้รับผิดชอบ |
+| Team Meeting | อัพเดตงาน → การมอบหมาย → ปัญหา → สิ่งที่ต้องทำ |
+| General Meeting | วาระ → ประเด็นหารือ → ข้อเสนอแนะ → มติ |
+
+**Output Format:**
+**[ประเภท]: [หัวข้อการประชุม]**
+(สรุปตามโครงสร้างของประเภทนั้น)
+
+**กฎ:** ใช้ภาษา{language} | ใช้ bullet points | แยกตามทีม/คน | ระบุผู้รับผิดชอบ+กำหนดเวลา | ข้ามหัวข้อที่ไม่มีข้อมูล | สรุปมติท้ายสุด"""
+            },
+            {
+                "role": "user",
+                "content": f"สรุปการประชุม:\n\n{transcription_text}"
+            }
+        ],
+        "temperature": 0.4,
+        "max_tokens": 4000
+    }
+    
+    try:
+        response = requests.post(NTC_API_URL, headers=headers, json=payload, timeout=60)
+        response.raise_for_status()
+        
+        result = response.json()
+        return result["choices"][0]["message"]["content"]
+        
+    except requests.exceptions.RequestException as e:
+        return f"Error calling NTC API: {str(e)}"
+    except (KeyError, IndexError) as e:
+        return f"Error parsing response: {str(e)}"
+
+
+def summarize_with_diarization(
+    transcript_with_speakers: str,
+    speaker_summary: dict,
+    meeting_type_id: int = 0,
+    language: str = "Thai"
+) -> str:
+    """Summarize transcription with speaker diarization data."""
+    if not NTC_API_KEY:
+        return "Error: NTC_API_KEY not found in environment variables"
+    
+    # Build speaker info string
+    speakers_time = speaker_summary.get('speaking_time', {})
+    speakers_words = speaker_summary.get('word_count', {})
+    total_time = sum(speakers_time.values()) if speakers_time else 1
+    
+    speaker_info_lines = []
+    for speaker, time_sec in sorted(speakers_time.items(), key=lambda x: -x[1]):
+        pct = (time_sec / total_time * 100) if total_time > 0 else 0
+        words = speakers_words.get(speaker, 0)
+        mins = int(time_sec // 60)
+        secs = int(time_sec % 60)
+        speaker_info_lines.append(f"- {speaker}: {mins}:{secs:02d} ({pct:.1f}%), {words} คำ")
+    
+    speaker_info = "\n".join(speaker_info_lines)
+    num_speakers = len(speakers_time)
+    
+    # Get meeting type instruction
+    meeting_type_instruction = get_meeting_type_prompt(meeting_type_id)
+    meeting_type_info = MEETING_TYPES.get(meeting_type_id, MEETING_TYPES[0])
+    
+    headers = {
+        "Authorization": f"Bearer {NTC_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": "gpt-4o",
+        "messages": [
+            {
+                "role": "system",
+                "content": f"""คุณคือผู้เชี่ยวชาญวิเคราะห์และสรุปการประชุม
+
+{meeting_type_instruction}
+
+**Output Format:**
+**[{meeting_type_info['thai'] if meeting_type_id > 0 else 'ประเภท'}]: [หัวข้อการประชุม]**
+
+**👥 ผู้เข้าร่วมประชุม ({num_speakers} คน):**
+(วิเคราะห์บทบาทจากเนื้อหาการพูด: ประธาน/ผู้นำเสนอ/ผู้เข้าร่วม)
+
+**📋 สรุปการประชุม:**
+(ตามโครงสร้าง: {meeting_type_info['structure']})
+
+**📌 การสั่งงาน/มอบหมาย:** (ถ้ามี)
+- **[ผู้สั่ง]** สั่งให้ **[ผู้รับมอบหมาย]** ทำ: [เนื้อหา] (กำหนด: [วันที่/เวลา ถ้ามี])
+
+**❓ คำถามสำคัญ:** (ถ้ามี)
+- **[ผู้ถาม]** ถาม: "[คำถาม]" → **[ผู้ตอบ]**: "[คำตอบ]"
+
+**✅ ข้อตกลง/มติ:** (ถ้ามี)
+- [เนื้อหาข้อตกลง] (เสนอโดย: **[ผู้เสนอ]**)
+
+**กฎสำคัญ:**
+- ภาษา{language}
+- ใช้ bullet points
+- **ต้องระบุชื่อผู้พูด (เช่น คนพูด 1, คนพูด 2) ในทุกการสั่งงาน/คำถาม/ข้อตกลง**
+- ระบุผู้รับผิดชอบ+กำหนดเวลาเมื่อมีการมอบหมายงาน
+- สรุปมติท้ายสุด"""
+            },
+            {
+                "role": "user",
+                "content": f"""**ข้อมูลผู้พูด:**
+{speaker_info}
+
+**เนื้อหาการประชุม:**
+{transcript_with_speakers}"""
+            }
+        ],
+        "temperature": 0.4,
+        "max_tokens": 4000
+    }
+    
+    try:
+        response = requests.post(NTC_API_URL, headers=headers, json=payload, timeout=120)
+        response.raise_for_status()
+        
+        result = response.json()
+        return result["choices"][0]["message"]["content"]
+        
+    except requests.exceptions.RequestException as e:
+        return f"Error calling NTC API: {str(e)}"
+    except (KeyError, IndexError) as e:
+        return f"Error parsing response: {str(e)}"
