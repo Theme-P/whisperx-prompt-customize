@@ -34,7 +34,7 @@ def get_meeting_type_prompt(meeting_type_id: int) -> str:
 สรุปเนื้อหาตามโครงสร้างข้างต้นอย่างละเอียด"""
 
 def summarize_transcription(transcription_text: str, language: str = "Thai") -> str:
-    """Summarize transcription text from WhisperX using GPT-4o."""
+    """Summarize transcription text from WhisperX using GPT-4.1."""
     if not NTC_API_KEY:
         return "Error: NTC_API_KEY not found in environment variables"
     
@@ -44,7 +44,7 @@ def summarize_transcription(transcription_text: str, language: str = "Thai") -> 
     }
     
     payload = {
-        "model": "gpt-4o",
+        "model": "gpt-4.1",
         "messages": [
             {
                 "role": "system",
@@ -131,7 +131,7 @@ def summarize_with_diarization(
     }
     
     payload = {
-        "model": "gpt-4o",
+        "model": "gpt-4.1",
         "messages": [
             {
                 "role": "system",

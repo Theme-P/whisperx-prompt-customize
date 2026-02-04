@@ -1,12 +1,12 @@
 # Summary-Transcribe
 
-> Thai speech-to-text using WhisperX with speaker diarization + GPT-4o summarization.
+> Thai speech-to-text using WhisperX with speaker diarization + GPT-4.1 summarization.
 
 ## ✨ Features
 - 🎯 OpenAI Whisper large-v3 model
 - 🗣️ Speaker diarization (แยกผู้พูด)
 - 🇹🇭 Thai language support
-- 🤖 **AI Summary** - สรุปใจความสำคัญด้วย GPT-4o
+- 🤖 **AI Summary** - สรุปใจความสำคัญด้วย GPT-4.1
 - 🐳 Docker ready (CUDA/GPU)
 - 👥 **Speaker Analysis** - วิเคราะห์บทบาทผู้พูด
 - 📋 **Auto Meeting Type Detection** - ระบุประเภทการประชุม 11 รูปแบบ
@@ -64,7 +64,7 @@ docker compose run whisperx python tests/whisper_playground.py
 📝 FULL TRANSCRIPT      → Timestamped transcript with speakers
 📈 SPEAKER SUMMARY      → Speaking time per person
 📋 COMBINED TEXT        → Full text without timestamps
-🤖 AI SUMMARY           → GPT-4o summary with speaker analysis
+🤖 AI SUMMARY           → GPT-4.1 summary with speaker analysis
 ```
 
 ### DOCX Files
@@ -82,7 +82,7 @@ docker compose run whisperx python tests/whisper_playground.py
 | Compute Type | float16 | GPU optimized |
 | Batch Size | 24 | For A100 GPU |
 | Beam Size | 5 | Best quality |
-| Summary API | GPT-4o | Via NTC AI Gateway |
+| Summary API | GPT-4.1 | Via NTC AI Gateway |
 
 ## 🔐 Environment Variables
 
@@ -91,7 +91,7 @@ Create `.env` file with:
 # Hugging Face Token (for speaker diarization)
 HF_TOKEN=your_huggingface_token
 
-# NTC AI Gateway (for GPT-4o summary)
+# NTC AI Gateway (for GPT-4.1 summary)
 NTC_API_KEY=your_ntc_api_key
 NTC_API_URL=https://aigateway.ntictsolution.com/v1/chat/completions
 ```
@@ -107,7 +107,7 @@ Summary-Transcribe/
 │   │   └── meeting.py          # Meeting types definitions
 │   ├── services/
 │   │   ├── pipeline.py         # TranscribeSummaryPipeline
-│   │   └── summarizer.py       # GPT-4o summary functions
+│   │   └── summarizer.py       # GPT-4.1 summary functions
 │   └── utils/
 │       ├── export.py           # DOCX export utilities
 │       └── formatting.py       # Helper functions
@@ -131,7 +131,7 @@ Audio File
     ↓
 [Speaker Diarization] → Build speaker summary
     ↓
-[GPT-4o Summary API] ← Transcript + Speaker Data
+[GPT-4.1 Summary API] ← Transcript + Speaker Data
     ↓
 [Export DOCX] → transcript.docx + summary.docx
     ↓

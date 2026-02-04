@@ -25,7 +25,7 @@ def clear_gpu_memory():
 
 class TranscribeSummaryPipeline:
     """
-    Combined pipeline that runs WhisperX transcription and GPT-4o summarization.
+    Combined pipeline that runs WhisperX transcription and GPT-4.1 summarization.
     Handles model loading, transcription, speaker diarization, and AI summary.
     """
     
@@ -260,7 +260,7 @@ class TranscribeSummaryPipeline:
         
         # Summary
         print("\n" + "=" * 60)
-        print("🤖 AI SUMMARY (GPT-4o)")
+        print("🤖 AI SUMMARY (GPT-4.1)")
         print("=" * 60)
         print(output['summary'])
         

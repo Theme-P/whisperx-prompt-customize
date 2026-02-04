@@ -1,7 +1,7 @@
 services:
   whisperx:
     build: .
-    container_name: whisperx
+    container_name: Transummary
     stdin_open: true
     tty: true
     runtime: nvidia
