@@ -250,7 +250,7 @@ def export_both(
     audio_file: str = None,
     audio_length: float = None,
     format_speaker_func = None,
-    output_dir: str = "Doc"
+    output_dir: str = "doc"
 ) -> Dict[str, str]:
     """
     Export both transcript and summary to DOCX files.
