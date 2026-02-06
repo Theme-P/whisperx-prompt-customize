@@ -1,9 +1,9 @@
 services:
-  whisperx:
+  # Backend - GPU Container (WhisperX + FastAPI)
+  backend:
     build: .
-    container_name: Transummary
-    stdin_open: true
-    tty: true
+    container_name: transummary-backend
+    restart: unless-stopped
     runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
@@ -11,13 +11,37 @@ services:
       - TORCH_HOME=/app/.cache/torch
     volumes:
       - ./audio:/app/audio
-      # Persist model cache between container restarts
       - whisperx_cache:/app/.cache
     ports:
       - "8000:8000"
     env_file:
       - .env
-    command: uvicorn api:app --host 0.0.0.0 --port 8000
+    command: uvicorn api:app --host 0.0.0.0 --port 8000 --workers 1
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Frontend - React + Nginx Container
+  frontend:
+    build: ./frontend
+    container_name: transummary-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
 
 volumes:
   whisperx_cache:
