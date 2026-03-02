@@ -68,13 +68,14 @@ class TranscribeSummaryPipeline:
         self.timing['model_load'] = time.time() - start
         print(f"   ⏱️ Model loaded: {self.timing['model_load']:.2f}s")
     
-    def process(self, audio_file: str, meeting_type_id: int = 0) -> Dict[str, Any]:
+    def process(self, audio_file: str, meeting_type_id: int = 0, speaker_names: list = None) -> Dict[str, Any]:
         """
         Process audio file: transcribe and summarize.
         
         Args:
             audio_file: Path to audio file
             meeting_type_id: Meeting type ID (0=auto-detect, 1-11=specific type)
+            speaker_names: Optional list of dicts [{name, position}] for speaker labeling
         
         Returns structured output with:
         - Full transcript with segments
@@ -144,6 +145,17 @@ class TranscribeSummaryPipeline:
         del diarize_model
         clear_gpu_memory()
         
+        # Build speaker name mapping from user input
+        speaker_name_map = {}
+        if speaker_names:
+            for i, info in enumerate(speaker_names):
+                name = info.get('name', '').strip()
+                position = info.get('position', '').strip()
+                if name:
+                    generic_label = f"คนพูด {i + 1}"
+                    display_name = f"{name} ({position})" if position else name
+                    speaker_name_map[generic_label] = display_name
+        
         # Build speaker summary and transcript with speaker labels
         segments = sorted(result.get('segments', []), key=lambda x: x['start'])
         speakers_time = {}
@@ -152,13 +164,18 @@ class TranscribeSummaryPipeline:
         
         for segment in segments:
             speaker = format_speaker(segment.get('speaker'))
+            # Replace generic label with user-provided name
+            display_speaker = speaker_name_map.get(speaker, speaker)
+            # Update the segment speaker to display name
+            segment['speaker'] = display_speaker
+            
             duration = segment['end'] - segment['start']
             text = segment.get('text', '').strip()
             word_count = len(text.split())
-            speakers_time[speaker] = speakers_time.get(speaker, 0) + duration
-            speakers_words[speaker] = speakers_words.get(speaker, 0) + word_count
+            speakers_time[display_speaker] = speakers_time.get(display_speaker, 0) + duration
+            speakers_words[display_speaker] = speakers_words.get(display_speaker, 0) + word_count
             # Build transcript with speaker labels
-            transcript_lines.append(f"[{speaker}]: {text}")
+            transcript_lines.append(f"[{display_speaker}]: {text}")
         
         transcript_with_speakers = "\n".join(transcript_lines)
         speaker_summary = {

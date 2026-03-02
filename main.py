@@ -54,7 +54,9 @@ def main():
             base_path=base_path,
             audio_file=audio_file,
             audio_length=output['audio_length_seconds'],
-            format_speaker_func=format_speaker
+            format_speaker_func=format_speaker,
+            speaker_summary=output['full_transcript'].get('speaker_summary'),
+            meeting_type_id=meeting_type_id
         )
         print(f"\n📄 Files exported:")
         print(f"   - Transcript: {results['transcript']}")

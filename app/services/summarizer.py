@@ -1,5 +1,4 @@
 import requests
-import json 
 import os
 from ..models.meeting import MEETING_TYPES, get_meeting_focus_prompt
 
@@ -35,67 +34,6 @@ def get_meeting_type_prompt(meeting_type_id: int) -> str:
 {focus_prompt}
 
 สรุปเนื้อหาตามโครงสร้างข้างต้น โดยเน้นความละเอียดในประเด็นหัวใจหลัก"""
-
-def summarize_transcription(transcription_text: str, language: str = "Thai") -> str:
-    """Summarize transcription text from WhisperX using GPT-4.1."""
-    if not NTC_API_KEY:
-        return "Error: NTC_API_KEY not found in environment variables"
-    
-    headers = {
-        "Authorization": f"Bearer {NTC_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "model": "gpt-4.1",
-        "messages": [
-            {
-                "role": "system",
-                "content": f"""คุณคือผู้เชี่ยวชาญสรุปการประชุม ทำตามขั้นตอน:
-1. วิเคราะห์ประเภทการประชุม
-2. สรุปตามโครงสร้างที่เหมาะสม
-
-**ประเภทการประชุม:**
-| ประเภท | โครงสร้างหลัก |
-|--------|--------------|
-| Shareholder Meeting | วาระ → มติ → เงินปันผล → ข้อสรุป |
-| Board Meeting | นโยบาย → การอนุมัติ → มติคณะกรรมการ |
-| Planning Meeting | เป้าหมาย → แผนงาน → ไทม์ไลน์ → ผู้รับผิดชอบ → ความเสี่ยง |
-| Progress Update | สถานะโครงการ → ความคืบหน้า → ปัญหา → แนวทางแก้ → งานถัดไป |
-| Strategy Meeting | ทิศทางธุรกิจ → การวิเคราะห์ → กลยุทธ์ → Action Plan |
-| Incident Review | รายละเอียดปัญหา → สาเหตุ → ผลกระทบ → แนวทางแก้ไข → การป้องกัน |
-| Client Meeting | ข้อเสนอ → Feedback → ข้อตกลง → Next Steps |
-| Workshop | หัวข้อ → เนื้อหาสำคัญ → บทเรียน → Action Items |
-| Executive Meeting | ประเด็นสำคัญ → การตัดสินใจ → มติ → ผู้รับผิดชอบ |
-| Team Meeting | อัพเดตงาน → การมอบหมาย → ปัญหา → สิ่งที่ต้องทำ |
-| General Meeting | วาระ → ประเด็นหารือ → ข้อเสนอแนะ → มติ |
-
-**Output Format:**
-**[ประเภท]: [หัวข้อการประชุม]**
-(สรุปตามโครงสร้างของประเภทนั้น)
-
-**กฎ:** ใช้ภาษา{language} | ใช้ bullet points | แยกตามทีม/คน | ระบุผู้รับผิดชอบ+กำหนดเวลา | ข้ามหัวข้อที่ไม่มีข้อมูล | สรุปมติท้ายสุด"""
-            },
-            {
-                "role": "user",
-                "content": f"สรุปการประชุม:\n\n{transcription_text}"
-            }
-        ],
-        "temperature": 0.4,
-        "max_tokens": 4000
-    }
-    
-    try:
-        response = requests.post(NTC_API_URL, headers=headers, json=payload, timeout=60)
-        response.raise_for_status()
-        
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
-        
-    except requests.exceptions.RequestException as e:
-        return f"Error calling NTC API: {str(e)}"
-    except (KeyError, IndexError) as e:
-        return f"Error parsing response: {str(e)}"
 
 
 def summarize_with_diarization(
@@ -141,8 +79,6 @@ def summarize_with_diarization(
                 "content": f"""คุณคือผู้เชี่ยวชาญวิเคราะห์และสรุปการประชุม
 
 {meeting_type_instruction}
-
-{get_meeting_focus_prompt(meeting_type_id)}
 
 **Output Format:**
 **[{meeting_type_info['thai'] if meeting_type_id > 0 else 'ประเภท'}]: [หัวข้อการประชุม]**

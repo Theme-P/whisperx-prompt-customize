@@ -1,20 +1,28 @@
-// Meeting types matching backend MEETING_TYPES
-const MEETING_TYPES = [
-    { id: 0, name: 'Auto-Detect', thai: 'ตรวจจับอัตโนมัติ', structure: 'วิเคราะห์จากเนื้อหา' },
-    { id: 1, name: 'Shareholder Meeting', thai: 'ประชุมผู้ถือหุ้น', structure: 'วาระ → มติ → เงินปันผล' },
-    { id: 2, name: 'Board Meeting', thai: 'ประชุมคณะกรรมการ', structure: 'นโยบาย → การอนุมัติ → มติ' },
-    { id: 3, name: 'Planning Meeting', thai: 'ประชุมวางแผน', structure: 'เป้าหมาย → แผนงาน → ไทม์ไลน์' },
-    { id: 4, name: 'Progress Update', thai: 'รายงานความคืบหน้า', structure: 'สถานะ → ปัญหา → แนวทางแก้ไข' },
-    { id: 5, name: 'Strategy Meeting', thai: 'ประชุมเชิงกลยุทธ์', structure: 'ทิศทาง → กลยุทธ์ → Action Plan' },
-    { id: 6, name: 'Incident Review', thai: 'ประชุมแก้ไขปัญหา', structure: 'ปัญหา → สาเหตุ → การป้องกัน' },
-    { id: 7, name: 'Client Meeting', thai: 'ประชุมลูกค้า', structure: 'ข้อเสนอ → Feedback → ข้อตกลง' },
-    { id: 8, name: 'Workshop', thai: 'เชิงปฏิบัติการ', structure: 'เนื้อหา → บทเรียน → Action Items' },
-    { id: 9, name: 'Executive Meeting', thai: 'ประชุมผู้บริหาร', structure: 'ประเด็น → การตัดสินใจ → มติ' },
-    { id: 10, name: 'Team Meeting', thai: 'ประชุมทีมงาน', structure: 'อัพเดต → การมอบหมาย → สิ่งที่ต้องทำ' },
-    { id: 11, name: 'General Meeting', thai: 'ประชุมทั่วไป', structure: 'วาระ → ประเด็น → มติ' },
-]
+import { useState, useEffect } from 'react'
+
+const API_BASE = '/api'
 
 function MeetingTypeSelect({ value, onChange, disabled }) {
+    const [meetingTypes, setMeetingTypes] = useState([])
+    const [loading, setLoading] = useState(true)
+
+    useEffect(() => {
+        fetch(`${API_BASE}/meeting-types`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.meeting_types) {
+                    setMeetingTypes(data.meeting_types)
+                }
+            })
+            .catch(() => {
+                // Fallback: แสดง option เดียวกรณี API ไม่ตอบ
+                setMeetingTypes([
+                    { id: 0, name: 'Auto-Detect', thai: 'ตรวจจับอัตโนมัติ', structure: 'วิเคราะห์จากเนื้อหา' }
+                ])
+            })
+            .finally(() => setLoading(false))
+    }, [])
+
     return (
         <div className="form-group">
             <label className="form-label">
@@ -25,13 +33,17 @@ function MeetingTypeSelect({ value, onChange, disabled }) {
                     className="select-dropdown"
                     value={value}
                     onChange={(e) => onChange(Number(e.target.value))}
-                    disabled={disabled}
+                    disabled={disabled || loading}
                 >
-                    {MEETING_TYPES.map((type) => (
-                        <option key={type.id} value={type.id}>
-                            {type.thai}
-                        </option>
-                    ))}
+                    {loading ? (
+                        <option>กำลังโหลด...</option>
+                    ) : (
+                        meetingTypes.map((type) => (
+                            <option key={type.id} value={type.id}>
+                                {type.thai}
+                            </option>
+                        ))
+                    )}
                 </select>
                 <span className="select-arrow">▼</span>
             </div>

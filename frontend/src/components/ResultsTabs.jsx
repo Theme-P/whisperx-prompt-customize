@@ -1,7 +1,10 @@
 import { useState } from 'react'
 
-function ResultsTabs({ result }) {
+const API_BASE = '/api'
+
+function ResultsTabs({ result, meetingType = 0, speakerNames = [] }) {
     const [activeTab, setActiveTab] = useState('transcript')
+    const [downloading, setDownloading] = useState(null)
 
     const formatTime = (seconds) => {
         const mins = Math.floor(seconds / 60)
@@ -9,12 +12,19 @@ function ResultsTabs({ result }) {
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
     }
 
+    // Build speaker name mapping: "คนพูด 1" -> "ชื่อจริง (ตำแหน่ง)"
+    const buildSpeakerDisplayName = (speakerLabel) => {
+        if (!speakerLabel) return 'ไม่ระบุ'
+        // Backend already maps names if provided
+        return speakerLabel
+    }
+
     const handleCopyText = (text) => {
         navigator.clipboard.writeText(text)
         alert('คัดลอกข้อความแล้ว!')
     }
 
-    const handleDownload = (content, filename) => {
+    const handleDownloadTxt = (content, filename) => {
         const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
@@ -22,6 +32,64 @@ function ResultsTabs({ result }) {
         a.download = filename
         a.click()
         URL.revokeObjectURL(url)
+    }
+
+    const handleDownloadTranscriptDocx = async () => {
+        setDownloading('transcript')
+        try {
+            const response = await fetch(`${API_BASE}/export/transcript`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    segments: result.transcript.segments,
+                    audio_file: result.audio_file,
+                    audio_length_seconds: result.audio_length_seconds
+                })
+            })
+
+            if (!response.ok) throw new Error('Export failed')
+
+            const blob = await response.blob()
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = 'transcript.docx'
+            a.click()
+            URL.revokeObjectURL(url)
+        } catch (err) {
+            alert('เกิดข้อผิดพลาดในการดาวน์โหลด: ' + err.message)
+        } finally {
+            setDownloading(null)
+        }
+    }
+
+    const handleDownloadSummaryDocx = async () => {
+        setDownloading('summary')
+        try {
+            const response = await fetch(`${API_BASE}/export/summary`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    summary: result.summary,
+                    speaker_summary: result.transcript.speaker_summary,
+                    meeting_type_id: meetingType
+                })
+            })
+
+            if (!response.ok) throw new Error('Export failed')
+
+            const blob = await response.blob()
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = 'summary.docx'
+            a.click()
+            URL.revokeObjectURL(url)
+        } catch (err) {
+            alert('เกิดข้อผิดพลาดในการดาวน์โหลด: ' + err.message)
+        } finally {
+            setDownloading(null)
+        }
     }
 
     // Calculate speaker percentages
@@ -70,7 +138,7 @@ function ResultsTabs({ result }) {
                                         {formatTime(segment.start)} - {formatTime(segment.end)}
                                     </span>
                                     <span className="segment-speaker">
-                                        {segment.speaker || 'ไม่ระบุ'}
+                                        {buildSpeakerDisplayName(segment.speaker)}
                                     </span>
                                 </div>
                                 <p className="segment-text">{segment.text}</p>
@@ -135,9 +203,17 @@ function ResultsTabs({ result }) {
                 </button>
                 <button
                     className="btn btn-primary"
-                    onClick={() => handleDownload(result.summary, 'summary.txt')}
+                    onClick={handleDownloadTranscriptDocx}
+                    disabled={downloading === 'transcript'}
                 >
-                    📥 ดาวน์โหลด Summary
+                    {downloading === 'transcript' ? '⏳ กำลังสร้าง...' : '📥 ดาวน์โหลด Transcript (DOCX)'}
+                </button>
+                <button
+                    className="btn btn-primary"
+                    onClick={handleDownloadSummaryDocx}
+                    disabled={downloading === 'summary'}
+                >
+                    {downloading === 'summary' ? '⏳ กำลังสร้าง...' : '📥 ดาวน์โหลด Summary (DOCX)'}
                 </button>
             </div>
         </div>

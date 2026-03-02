@@ -7,8 +7,11 @@ import tempfile
 import shutil
 from typing import Optional
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import List
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -17,6 +20,7 @@ load_dotenv()
 # Import pipeline components
 from app.services.pipeline import TranscribeSummaryPipeline
 from app.models.meeting import MEETING_TYPES, get_meeting_types_menu
+from app.utils.export import export_transcript_to_docx, export_summary_to_docx
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -78,6 +82,24 @@ class TranscribeSummarizeResponse(BaseModel):
     summary: str
 
 
+# Request models for export
+class TranscriptSegment(BaseModel):
+    start: float
+    end: float
+    text: str
+    speaker: str = None
+
+class ExportTranscriptRequest(BaseModel):
+    segments: List[TranscriptSegment]
+    audio_file: str = ""
+    audio_length_seconds: float = 0
+
+class ExportSummaryRequest(BaseModel):
+    summary: str
+    speaker_summary: dict = None  # Optional: speaking_time and word_count per speaker
+    meeting_type_id: int = 0  # Meeting type for position formatting
+
+
 # ===================== ENDPOINTS =====================
 
 @app.get("/api/health", response_model=HealthResponse)
@@ -111,19 +133,30 @@ async def get_meeting_types():
 @app.post("/api/transcribe-summarize", response_model=TranscribeSummarizeResponse)
 async def transcribe_summarize(
     audio: UploadFile = File(..., description="Audio file to transcribe"),
-    meeting_type_id: int = Form(0, description="Meeting type ID (0=auto-detect, 1-11=specific type)")
+    meeting_type_id: int = Form(0, description="Meeting type ID (0=auto-detect, 1-11=specific type)"),
+    speaker_names: str = Form("[]", description="JSON array of speaker info [{name, position}]")
 ):
     """
     Transcribe audio file and generate AI summary.
     
     - **audio**: Audio file (mp3, wav, m4a, etc.)
     - **meeting_type_id**: Meeting type for summary structure (0 = auto-detect)
+    - **speaker_names**: JSON array of speaker names and positions
     
     Returns transcript with speaker diarization and AI-generated summary.
     """
     # Validate meeting type
     if meeting_type_id < 0 or meeting_type_id > 11:
         raise HTTPException(status_code=400, detail="meeting_type_id must be between 0 and 11")
+    
+    # Parse speaker names
+    import json
+    try:
+        speaker_names_list = json.loads(speaker_names)
+        if not isinstance(speaker_names_list, list):
+            speaker_names_list = []
+    except (json.JSONDecodeError, TypeError):
+        speaker_names_list = []
     
     # Validate file type
     allowed_extensions = ['.mp3', '.wav', '.m4a', '.flac', '.ogg', '.webm', '.mp4']
@@ -145,7 +178,7 @@ async def transcribe_summarize(
         
         # Run pipeline
         pipeline = TranscribeSummaryPipeline()
-        result = pipeline.process(temp_file, meeting_type_id=meeting_type_id)
+        result = pipeline.process(temp_file, meeting_type_id=meeting_type_id, speaker_names=speaker_names_list)
         
         # Build response
         return TranscribeSummarizeResponse(
@@ -178,6 +211,69 @@ async def transcribe_summarize(
         # Cleanup temp files
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
+
+
+# ===================== EXPORT ENDPOINTS =====================
+
+@app.post("/api/export/transcript")
+async def export_transcript(request: ExportTranscriptRequest):
+    """
+    Export transcript segments to DOCX file.
+    """
+    temp_dir = tempfile.mkdtemp()
+    output_path = os.path.join(temp_dir, "transcript.docx")
+    
+    try:
+        # Convert segments to dict format
+        segments = [seg.model_dump() for seg in request.segments]
+        
+        # Generate DOCX
+        export_transcript_to_docx(
+            segments=segments,
+            output_path=output_path,
+            audio_file=request.audio_file,
+            audio_length=request.audio_length_seconds
+        )
+        
+        return FileResponse(
+            path=output_path,
+            filename="transcript.docx",
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            background=BackgroundTask(shutil.rmtree, temp_dir, ignore_errors=True)
+        )
+    except Exception as e:
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+        raise HTTPException(status_code=500, detail=f"Export error: {str(e)}")
+
+
+@app.post("/api/export/summary")
+async def export_summary(request: ExportSummaryRequest):
+    """
+    Export summary text to DOCX file.0
+    """
+    temp_dir = tempfile.mkdtemp()
+    output_path = os.path.join(temp_dir, "summary.docx")
+    
+    try:
+        # Generate DOCX with optional speaker header section and meeting type
+        export_summary_to_docx(
+            summary_text=request.summary,
+            output_path=output_path,
+            speaker_summary=request.speaker_summary,
+            meeting_type_id=request.meeting_type_id
+        )
+        
+        return FileResponse(
+            path=output_path,
+            filename="summary.docx",
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            background=BackgroundTask(shutil.rmtree, temp_dir, ignore_errors=True)
+        )
+    except Exception as e:
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+        raise HTTPException(status_code=500, detail=f"Export error: {str(e)}")
 
 
 # ===================== STARTUP =====================

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import FileUploader from './components/FileUploader'
 import MeetingTypeSelect from './components/MeetingTypeSelect'
+import SpeakerInput from './components/SpeakerInput'
 import ProcessingStatus from './components/ProcessingStatus'
 import ResultsTabs from './components/ResultsTabs'
 
@@ -10,6 +11,10 @@ const API_BASE = '/api'
 function App() {
     const [file, setFile] = useState(null)
     const [meetingType, setMeetingType] = useState(0)
+    const [speakers, setSpeakers] = useState([
+        { name: '', position: '' },
+        { name: '', position: '' },
+    ])
     const [isProcessing, setIsProcessing] = useState(false)
     const [currentStep, setCurrentStep] = useState(0)
     const [progress, setProgress] = useState(0)
@@ -52,6 +57,10 @@ function App() {
             formData.append('audio', file)
             formData.append('meeting_type_id', meetingType)
 
+            // Send speaker names (filter out empty entries)
+            const validSpeakers = speakers.filter(s => s.name.trim() !== '')
+            formData.append('speaker_names', JSON.stringify(validSpeakers))
+
             const response = await fetch(`${API_BASE}/transcribe-summarize`, {
                 method: 'POST',
                 body: formData,
@@ -79,65 +88,79 @@ function App() {
 
     return (
         <div className="app-container">
-            <main className="main-content">
-                {/* Header */}
-                <header className="header">
-                    <h1 className="header-title">🎙️ Transcribe-Summary</h1>
-                    <p className="header-subtitle">ถอดเสียงประชุมและสรุปอัตโนมัติด้วย AI</p>
-                </header>
+            {/* Header */}
+            <header className="header">
+                <h1 className="header-title">🎙️ Transcribe-Summary</h1>
+                <p className="header-subtitle">ถอดเสียงประชุมและสรุปอัตโนมัติด้วย AI</p>
+            </header>
 
-                {/* Upload Section */}
-                <section className="glass-card">
-                    <FileUploader
-                        file={file}
-                        onFileSelect={handleFileSelect}
-                        disabled={isProcessing}
-                    />
-                </section>
-
-                {/* Meeting Type Selection */}
-                <section className="glass-card">
-                    <MeetingTypeSelect
-                        value={meetingType}
-                        onChange={setMeetingType}
-                        disabled={isProcessing}
-                    />
-
-                    {/* Submit Button */}
-                    <button
-                        className="btn btn-primary btn-full"
-                        onClick={handleSubmit}
-                        disabled={!file || isProcessing}
-                    >
-                        {isProcessing ? '⏳ กำลังประมวลผล...' : '🚀 เริ่มประมวลผล'}
-                    </button>
-                </section>
-
-                {/* Processing Status */}
-                {isProcessing && (
+            <div className="two-column-layout">
+                {/* Left Column - Main Workflow */}
+                <main className="main-column">
+                    {/* Upload Section */}
                     <section className="glass-card">
-                        <ProcessingStatus
-                            currentStep={currentStep}
-                            progress={progress}
+                        <FileUploader
+                            file={file}
+                            onFileSelect={handleFileSelect}
+                            disabled={isProcessing}
                         />
                     </section>
-                )}
 
-                {/* Error Message */}
-                {error && (
-                    <div className="error-message">
-                        <span>❌</span>
-                        <span>{error}</span>
-                    </div>
-                )}
+                    {/* Meeting Type Selection */}
+                    <section className="glass-card">
+                        <MeetingTypeSelect
+                            value={meetingType}
+                            onChange={setMeetingType}
+                            disabled={isProcessing}
+                        />
 
-                {/* Results */}
-                {result && (
-                    <section className="glass-card results-section">
-                        <ResultsTabs result={result} />
+                        {/* Submit Button */}
+                        <button
+                            className="btn btn-primary btn-full"
+                            onClick={handleSubmit}
+                            disabled={!file || isProcessing}
+                        >
+                            {isProcessing ? '⏳ กำลังประมวลผล...' : '🚀 เริ่มประมวลผล'}
+                        </button>
                     </section>
-                )}
-            </main>
+
+                    {/* Processing Status */}
+                    {isProcessing && (
+                        <section className="glass-card">
+                            <ProcessingStatus
+                                currentStep={currentStep}
+                                progress={progress}
+                            />
+                        </section>
+                    )}
+
+                    {/* Error Message */}
+                    {error && (
+                        <div className="error-message">
+                            <span>❌</span>
+                            <span>{error}</span>
+                        </div>
+                    )}
+
+                    {/* Results */}
+                    {result && (
+                        <section className="glass-card results-section">
+                            <ResultsTabs result={result} meetingType={meetingType} speakerNames={speakers} />
+                        </section>
+                    )}
+                </main>
+
+                {/* Right Column - Speaker Input */}
+                <aside className="side-column">
+                    <section className="glass-card">
+                        <SpeakerInput
+                            speakers={speakers}
+                            onChange={setSpeakers}
+                            disabled={isProcessing}
+                        />
+                    </section>
+                </aside>
+            </div>
         </div>
     )
 }

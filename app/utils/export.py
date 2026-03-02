@@ -2,7 +2,7 @@ import os
 import re
 from datetime import datetime
 from typing import Dict, List, Optional
-from ..utils.formatting import format_speaker as default_format_speaker_func
+from ..utils.formatting import format_speaker as default_format_speaker_func, format_time
 
 # Check for python-docx availability
 try:
@@ -89,15 +89,11 @@ def export_transcript_to_docx(
         
         start = segment.get('start', 0)
         end = segment.get('end', 0)
-        speaker = format_speaker(segment.get('speaker'))
+        # Use speaker name as-is (already mapped by pipeline)
+        speaker = segment.get('speaker', '') or ''
+        if not speaker or speaker.startswith('SPEAKER_'):
+            speaker = format_speaker(segment.get('speaker'))
         text = segment.get('text', '').strip()
-        
-        # Format time as MM:SS.ms
-        def format_time(seconds):
-            m = int(seconds // 60)
-            s = int(seconds % 60)
-            ms = int((seconds % 1) * 100)
-            return f"{m:02d}:{s:02d}.{ms:02d}"
         
         row[0].text = format_time(start)
         row[1].text = format_time(end)
@@ -114,7 +110,10 @@ def export_transcript_to_docx(
     current_text = []
     
     for segment in sorted(segments, key=lambda x: x.get('start', 0)):
-        speaker = format_speaker(segment.get('speaker'))
+        # Use speaker name as-is (already mapped by pipeline)
+        speaker = segment.get('speaker', '') or ''
+        if not speaker or speaker.startswith('SPEAKER_'):
+            speaker = format_speaker(segment.get('speaker'))
         text = segment.get('text', '').strip()
         
         if speaker == current_speaker:
@@ -140,13 +139,37 @@ def export_transcript_to_docx(
 
 def export_summary_to_docx(
     summary_text: str,
-    output_path: str
+    output_path: str,
+    speaker_summary: Dict = None,
+    meeting_type_id: int = 0
 ) -> str:
     """
-    Export AI summary to a formatted DOCX file.
+    Export AI summary to a formatted DOCX file with participant header section.
+    
+    Args:
+        summary_text: The AI-generated summary text
+        output_path: Path to save the DOCX file
+        speaker_summary: Dictionary containing 'speaking_time' and 'word_count' per speaker
+        meeting_type_id: Meeting type ID for position formatting
     """
     if not DOCX_AVAILABLE:
         return "Error: python-docx not installed. Run: pip install python-docx"
+    
+    # Position templates based on meeting type
+    POSITION_TEMPLATES = {
+        0: {"leader": "ประธาน", "main": "ผู้นำเสนอ", "participant": "ผู้เข้าร่วม"},
+        1: {"leader": "ประธาน", "main": "กรรมการ", "participant": "ผู้ถือหุ้น"},  # Shareholder
+        2: {"leader": "ประธาน", "main": "กรรมการ", "participant": "ผู้เข้าร่วม"},  # Board
+        3: {"leader": "ผู้จัดการโครงการ", "main": "ผู้รับผิดชอบ", "participant": "ทีมงาน"},  # Planning
+        4: {"leader": "ผู้รายงาน", "main": "ผู้รับผิดชอบ", "participant": "ผู้เข้าร่วม"},  # Progress
+        5: {"leader": "ผู้บริหาร", "main": "ผู้นำเสนอ", "participant": "ผู้เข้าร่วม"},  # Strategy
+        6: {"leader": "หัวหน้าทีม", "main": "ผู้เกี่ยวข้อง", "participant": "ผู้เข้าร่วม"},  # Incident
+        7: {"leader": "ผู้แทนบริษัท", "main": "ผู้นำเสนอ", "participant": "ลูกค้า"},  # Client
+        8: {"leader": "ผู้บรรยาย", "main": "ผู้ช่วยบรรยาย", "participant": "ผู้เข้าร่วม"},  # Workshop
+        9: {"leader": "ประธาน", "main": "ผู้บริหาร", "participant": "ผู้เข้าร่วม"},  # Executive
+        10: {"leader": "หัวหน้าทีม", "main": "ผู้นำเสนอ", "participant": "สมาชิกทีม"},  # Team
+        11: {"leader": "ประธาน", "main": "ผู้นำเสนอ", "participant": "ผู้เข้าร่วม"},  # General
+    }
     
     doc = Document()
     
@@ -155,6 +178,64 @@ def export_summary_to_docx(
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
     doc.add_paragraph()  # Spacer
+    
+    # ============ PARTICIPANT HEADER SECTION ============
+    if speaker_summary:
+        speakers_time = speaker_summary.get('speaking_time', {})
+        total_time = sum(speakers_time.values()) if speakers_time else 1
+        
+        if speakers_time:
+            # Get position template for this meeting type
+            positions = POSITION_TEMPLATES.get(meeting_type_id, POSITION_TEMPLATES[0])
+            
+            # Add numbered heading
+            heading = doc.add_paragraph()
+            heading_run = heading.add_run('1. ผู้เข้าร่วมประชุมและตำแหน่ง')
+            heading_run.bold = True
+            heading_run.font.size = Pt(14)
+            
+            # Sort speakers by speaking time (most active first)
+            sorted_speakers = sorted(speakers_time.items(), key=lambda x: -x[1])
+            
+            # Group by position based on speaking percentage
+            leader_added = False
+            main_speakers = []
+            participants = []
+            
+            for idx, (speaker, time_sec) in enumerate(sorted_speakers):
+                pct = (time_sec / total_time * 100) if total_time > 0 else 0
+                
+                if idx == 0 and pct > 25:  # First speaker with significant time = leader
+                    # Add leader with actual speaker name
+                    p = doc.add_paragraph(style='List Bullet')
+                    p.add_run(f"{positions['leader']}: ").bold = True
+                    p.add_run(speaker)
+                    leader_added = True
+                elif pct > 10:  # Significant speaker = main role
+                    main_speakers.append(speaker)
+                else:  # Regular participant
+                    participants.append(speaker)
+            
+            # If no leader was added, use first speaker
+            if not leader_added and sorted_speakers:
+                first_speaker = sorted_speakers[0][0]
+                p = doc.add_paragraph(style='List Bullet')
+                p.add_run(f"{positions['leader']}: ").bold = True
+                p.add_run(first_speaker)
+            
+            # Add main speakers (กรรมการ/ผู้นำเสนอ)
+            if main_speakers or participants:
+                p = doc.add_paragraph(style='List Bullet')
+                p.add_run(f"{positions['main']}:").bold = True
+                
+                all_others = main_speakers + participants
+                for speaker in all_others:
+                    sub_p = doc.add_paragraph(style='List Bullet 2')
+                    sub_p.add_run(speaker)
+            
+            doc.add_paragraph()  # Spacer after participant section
+    
+    # ============ END PARTICIPANT HEADER SECTION ============
     
     # Header mapping for structured sections
     section_headers = {
@@ -250,10 +331,23 @@ def export_both(
     audio_file: str = None,
     audio_length: float = None,
     format_speaker_func = None,
-    output_dir: str = "doc"
+    output_dir: str = "doc",
+    speaker_summary: Dict = None,
+    meeting_type_id: int = 0
 ) -> Dict[str, str]:
     """
     Export both transcript and summary to DOCX files.
+    
+    Args:
+        segments: Transcription segments from WhisperX
+        summary_text: AI-generated summary text
+        base_path: Base path/filename for output files
+        audio_file: Original audio file path
+        audio_length: Length of audio in seconds
+        format_speaker_func: Custom speaker formatting function
+        output_dir: Directory to save DOCX files
+        speaker_summary: Dictionary with 'speaking_time' and 'word_count' per speaker
+        meeting_type_id: Meeting type ID for position formatting
     """
     # Ensure output directory exists
     if not os.path.isabs(output_dir):
@@ -279,10 +373,12 @@ def export_both(
         format_speaker_func=format_speaker_func
     )
     
-    # Export summary
+    # Export summary with speaker info and meeting type for participant header
     results['summary'] = export_summary_to_docx(
         summary_text=summary_text,
-        output_path=summary_path
+        output_path=summary_path,
+        speaker_summary=speaker_summary,
+        meeting_type_id=meeting_type_id
     )
     
     return results
